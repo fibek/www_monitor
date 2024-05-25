@@ -1,8 +1,10 @@
 # structure
+```
 tmp.wQC06ZnvpO
     └── www.example.org
         ├── 2024-05-25-10_14
         └── 2024-05-25-10_15
+```
 
 # optional functionality: 
 - [ ] pass needed login credentials (cookies)
