@@ -8,6 +8,7 @@ tmp.wQC06ZnvpO
 
 # optional functionality: 
 - [ ] pass needed login credentials (cookies) (pass wget options)
+- [x] cleanup
 
 # required functionality:
 - [x] handle list of websites
@@ -15,4 +16,4 @@ tmp.wQC06ZnvpO
 - [ ] choose browser to show differences
 - [ ] finish after first found difference
 - [ ] report difference to sys log (or stdout) instead of browser
-- [ ] help
+- [ ] help + add examples in usage
