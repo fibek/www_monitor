@@ -1,0 +1,122 @@
+#!/bin/env bash
+
+WORK_DIR=$(mktemp -d)
+ln -sn $WORK_DIR ./workdir # TODO: Remove; only in debug
+SNAPSHOTS="$WORK_DIR/snapshots"
+LOG_FILE='/var/log/messages'
+browser=$BROWSER
+delay=60 # in seconds
+OUT=/dev/null
+tmpInputFile=$(mktemp -p "$WORK_DIR")
+inputFile=''
+URL=''
+BROWSER='xdg-open'
+ONCE=false
+LOG=false
+VERBOSE=false
+
+trap cleanup TERM
+trap cleanup SIGINT
+
+function usage() {
+    echo "Usage: $0 [OPTIONS] [URL]"
+    echo "Options:"
+    echo " -h    Display this help message"
+    echo " -i    FILE Specify an input file with websites seperated with newline (then [URL] is)"
+    echo " -b    BROWSER Either path to executable or name in \$PATH"
+    echo " -f    FILE Print diff to file instead of opening browser"
+    echo " -o    Run only once"
+    echo " -d    INT  Specify delay (in seconds) between fetches"
+}
+
+function fetch() {
+    wget -i "$tmpInputFile" \
+        --force-directories \
+        --page-requisites \
+        --keep-session-cookies \
+        --save-cookies "./.cookies" \
+        --load-cookies "./.cookies" \
+        --directory-prefix "$SNAPSHOTS" \
+        --no-cache \
+        --backups=1 \
+        --adjust-extension \
+        --quiet
+}
+
+function compare() {
+    FETCHED_FILES=$(find "$SNAPSHOTS" -type f)
+    diffInd=0
+    for FILE in $FETCHED_FILES; do
+        if [[ $FILE != *.1 ]]; then
+            BACKUP_FILE="$FILE.1"
+            DIFF=$(diff $BACKUP_FILE $FILE)
+            URL=$(echo $BACKUP_FILE | awk -F'snapshots/' '{print $2}')
+            DESTINATION_FILE="$WORK_DIR/cached/${URL::-2}"
+            [[ ! -d "$WORK_DIR/cached" ]] && mkdir "$WORK_DIR/cached"
+            [[ -n "$DIFF" ]] && cd $SNAPSHOTS && cp --parents "$URL" "$WORK_DIR/cached" && mv "$WORK_DIR/cached/$URL" "$DESTINATION_FILE" && $BROWSER "$DESTINATION_FILE" && cd -
+            [[ -n "$DIFF" ]] && [[ "$LOG" = true ]] && echo -ne "[www-monitor] Found diff on $URL: \n $DIFF\n" >> "$LOG_FILE"
+            [[ -n "$DIFF" ]] && [[ "$VERBOSE" = true ]] && echo -ne "Found diff on $URL: \n $DIFF\n"
+
+            [[ -n "$DIFF" ]] && [[ "$ONCE" = true ]] && cleanup && exit
+        fi
+    done;
+}
+
+function cleanup() {
+    wait
+    rm -rf "$WORKDIR"
+    rm ./workdir
+    exit
+}
+
+function main() {
+    fetch
+    while true; do
+        [[ ! -d "$SNAPSHOTS" ]] && mkdir "$SNAPSHOTS"
+        sleep "$delay"
+        fetch
+        compare
+    done;
+}
+
+function handle_options() {
+    while getopts ":hlovi:b:d:f:" flag; do
+        case $flag in
+            h) # help
+            usage
+            ;;
+            i) # input file
+            inputFile=$OPTARG
+            ;;
+            b) # browser
+            BROWSER=$OPTARG 
+            ;;
+            d) # delay
+            delay=$OPTARG 
+            ;;
+            f) # output
+            LOG_FILE=$OPTARG 
+            ;;
+            o) # once
+            ONCE=true
+            ;;
+            l) # verbose
+            LOG=true
+            ;;
+            v) # verbose
+            VERBOSE=true
+            ;;
+            \?)
+            usage
+            exit
+            ;;
+        esac
+    done
+    shift $((OPTIND -1)) # Last argument in URL
+    URL=$1
+    [[ ! -z "$inputFile" ]] && cat "$PWD/$inputFile" > "$tmpInputFile"
+    echo "$URL" >> "$tmpInputFile"
+    [[ $(wc -c < "$tmpInputFile") -eq 0 ]] && echo 'No URL or input file specified!' && usage || main
+}
+
+handle_options "$@"
